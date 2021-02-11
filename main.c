@@ -173,10 +173,10 @@ void client(char *clientName, int numMessages, char *messages[])
     //Connect to the server
     server = gethostbyname("localhost");
     if (server == NULL) {
-        fprintf(stderr,"Client ERROR, no such host\n");
+        fprintf(stderr,"Client, no such host\n");
         exit(0);
     }
-
+    //Set the Server Address
     bzero((char *) &serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     bcopy((char *)server->h_addr, 
@@ -184,24 +184,32 @@ void client(char *clientName, int numMessages, char *messages[])
          server->h_length);
     serv_addr.sin_port = htons(PORT_NUMBER);
     
+    //Connect to Server socket
     if (connect(socket,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
-        error("Client ERROR connecting");
-        
+        error("Client connecting");
+
+    //Send the number of messages to send and wait for response of Server
+    sprintf(buffer, "%d", numMessages);//Convert #messages to string
+    n = write(socket, buffer, strlen(buffer));
+    if (n < 0) error("Client writing to socket");
+    n = read(socket, buffer, 255);
+    if (n < 0) error("Client reading from socket");
+    printf("%s\n", buffer);
     //For each message, write to the server and read the response
     for(int m = 0; m < numMessages; m++){
         strcpy(buffer, messages[m]);
-        //strcpy(buffer, "Test Message");
         n = write(socket, buffer, strlen(buffer));
-        if (n < 0) error("Client ERROR writing to socket");
+        if (n < 0) error("Client writing to socket");
         n = read(socket, buffer, 255);
-        if (n < 0) error("Client ERROR reading from socket");
+        if (n < 0) error("Client reading from socket");
         printf("%s : %d : %s\n", clientName, getpid(), buffer);
         bzero(buffer,256);
     }
-    //Accept connection and create a child proccess to read and write 
 
-    //fflush(stdout);
+    //Flush output and sleep the Client to give some time for the buffer
+    fflush(stdout);
     sleep(5);
+
     //Close socket
     close(socket);
 }
@@ -227,13 +235,13 @@ void server()
     //Bind the socket
     if(bind(socket , (struct sockaddr *) &serv_addr, 
     sizeof(serv_addr)) < 0){
-        error("Server ERROR on binding");
+        error("Server on binding");
     }
     
     //Listen the socket to accept
-    if(listen(socket, 5) < 0){error("Server ERROR not success listen");}
-    printf("Server Listening\n");
-    
+    if(listen(socket, 5) < 0){error("Server not success listen");}
+
+    //Clear the buffer and set its data range    
     bzero(buffer, 256);
 
     //Signal server is ready
@@ -242,38 +250,47 @@ void server()
     //Accept connection and create a child proccess to read and write
     while(!serverShutdown){
         int clilen = sizeof(cli_addr);
-        printf("Server Accepting\n");
+        //Accept Client Socket
         newsocket = accept(socket, (struct sockaddr *) &cli_addr, &clilen);
-        if (newsocket < 0) error("Server ERROR on accept");
-        printf("Server Accepted Client\n");
+        if (newsocket < 0) error("Server on accept");
 
         //Create Child Server proccess
         int childID = fork();
         if (childID < 0)
-        error("ERROR forking server");
+        error("forking server");
        else if (childID == 0) 
        {
             //Child Server here
-            int i = 0;
-            while(i<3){
+            //Read Header from client
+            int numberMessages;
             n = read(newsocket, buffer, 255);
-            if(n < 0) error("Server ERROR reading from socket");
-        
-            char message[256];
-            reverseString(buffer, message); //Reverse the received message
-            n = write(newsocket, message, strlen(message));
-            if(n < 0) error("Server ERROR writing to socket");
-            i++;
-            printf("Server : %d : %s\n", getpid(), buffer); //expected output 
+            if(n < 0) error("Server reading from socket");
+            numberMessages = atoi(buffer);
+            printf("Client Number of messages: %s\n", buffer);
+            //Reverse the received message
+            n = write(newsocket, "Message Receive", 16);
+            if(n < 0) error("Server writing to socket");
+            //Read all Messages
+            for(int i = 0; i < numberMessages; i++){
+              n = read(newsocket, buffer, 255);
+              if(n < 0) error("Server reading from socket");
+              printf("Server : %d : %s\n", getpid(), buffer); 
+              //Reverse the received message
+              char message[256];
+              reverseString(buffer, message); 
+              n = write(newsocket, message, strlen(message));
+              if(n < 0) error("Server writing to socket");
+              //expected output 
             }
         close(newsocket);
         close(socket);
         exit(0);
-        } 
+        }
     }
     //Close socket
     close(newsocket);
     close(socket);
 }
+
 
 
