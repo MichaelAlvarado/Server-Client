@@ -52,6 +52,11 @@ int runServer(int port) {
     return forkPID;
 }
 
+void waitbus(int signalCode){
+    fprintf(stderr,"Unaligment in Memory\n");
+    sleep(1);
+}
+
 int runClient(char *clientName, int numMessages, char **messages) {
     fflush(stdout);
     fprintf(stderr, "Launching client %s...\n", clientName);
@@ -87,7 +92,7 @@ struct client clients[] = {
 };
 
 int main() {
-    signal(SIGUSR1, serverReady);
+    signal(SIGUSR2, serverReady);
 
     int serverPID = runServer(getpid());
     while(!serverIsReady) {
@@ -123,7 +128,7 @@ int main() {
 //#you can create the global variables and functions that you consider necessary***
 //*********************************************************************************
 
-#define PORT_NUMBER 44142
+#define PORT_NUMBER 40190 //44142
 
 bool serverShutdown = false;
 
@@ -168,20 +173,24 @@ void client(char *clientName, int numMessages, char *messages[])
     struct sockaddr_in serv_addr;
     struct hostent *server;
     char buffer[256];
+    bzero(buffer, sizeof(buffer));
+
     //Open the socket
     socket = openSocket();
+
     //Connect to the server
     server = gethostbyname("localhost");
     if (server == NULL) {
         fprintf(stderr,"Client, no such host\n");
         exit(0);
     }
+
     //Set the Server Address
     bzero((char *) &serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     bcopy((char *)server->h_addr, 
-         (char *)&serv_addr.sin_addr.s_addr,
-         server->h_length);
+        (char *)&serv_addr.sin_addr.s_addr,
+        server->h_length);
     serv_addr.sin_port = htons(PORT_NUMBER);
     
     //Connect to Server socket
@@ -208,45 +217,45 @@ void client(char *clientName, int numMessages, char *messages[])
 
     //Flush output and sleep the Client to give some time for the buffer
     fflush(stdout);
-    sleep(5);
+    sleep(3); //Also controls the end of the client to Server shutdown
 
     //Close socket
     close(socket);
+    exit(0);
 }
 
 void server()
 {
     int socket, newsocket, n;
+    int opt = 1;
     struct sockaddr_in serv_addr, cli_addr;
     char buffer[256];
-    
+    bzero(buffer, sizeof(buffer));
     //Handle SIGINT so the server stops when the main process kills it
     signal (SIGINT, shutdownServer);
-    
+
     //Open the socket
     socket = openSocket();
-    
+
     //Set Address of server
     bzero((char *) &serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = INADDR_ANY;
     serv_addr.sin_port = htons(PORT_NUMBER);
-   
+
     //Bind the socket
     if(bind(socket , (struct sockaddr *) &serv_addr, 
     sizeof(serv_addr)) < 0){
         error("Server on binding");
     }
-    
-    //Listen the socket to accept
-    if(listen(socket, 5) < 0){error("Server not success listen");}
-
     //Clear the buffer and set its data range    
     bzero(buffer, 256);
 
-    //Signal server is ready
-    kill(0, SIGUSR1);
+    //Listen the socket to accept
+    if(listen(socket, 5) < 0){error("Server not success listen");}
 
+    //Signal server is ready
+    kill(getppid(), SIGUSR2);
     //Accept connection and create a child proccess to read and write
     while(!serverShutdown){
         int clilen = sizeof(cli_addr);
@@ -272,16 +281,16 @@ void server()
             if(n < 0) error("Server writing to socket");
             //Read all Messages
             for(int i = 0; i < numberMessages; i++){
-              n = read(newsocket, buffer, 255);
-              if(n < 0) error("Server reading from socket");
-              printf("Server : %d : %s\n", getpid(), buffer); 
-              //Reverse the received message
-              char message[256];
-              reverseString(buffer, message); 
-              n = write(newsocket, message, strlen(message));
-              if(n < 0) error("Server writing to socket");
-              //expected output 
+                n = read(newsocket, buffer, 255);
+                if(n < 0) error("Server reading from socket");
+                printf("Server : %d : %s\n", getpid(), buffer); //expected output
+                //Reverse the received message
+                char message[256];
+                reverseString(buffer, message); 
+                n = write(newsocket, message, strlen(message));
+                if(n < 0) error("Server writing to socket");
             }
+        //sleep(2);
         close(newsocket);
         close(socket);
         exit(0);
@@ -290,7 +299,10 @@ void server()
     //Close socket
     close(newsocket);
     close(socket);
+    exit(0);
 }
+
+
 
 
 
